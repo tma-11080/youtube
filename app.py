@@ -1,24 +1,50 @@
 import streamlit as st
 import requests
+import re
 from bs4 import BeautifulSoup
 
-st.title("YouTube Post Image Downloader")
+st.set_page_config(page_title="YT Post Downloader", page_icon="📸")
 
-# URL入力
-url = st.text_input("YouTubeポストの共有URLを貼ってね")
+st.title("📸 YouTube Post Image Grabber")
+st.write("コミュニティ投稿のURLを貼ると、画像を抽出します。")
+
+url = st.text_input("URLをペースト:", placeholder="https://www.youtube.com/post/...")
 
 if url:
-    try:
-        # ページのHTMLを取得
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
+    with st.spinner('画像を探しています...'):
+        try:
+            # 1. ページのHTMLを取得
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.37 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+            response = requests.get(url, headers=headers)
+            html = response.text
+
+            # 2. og:imageタグからURLを取得（一番簡単な方法）
+            soup = BeautifulSoup(html, 'html.parser')
+            meta_img = soup.find("meta", property="og:image")
+            
+            if meta_img:
+                img_url = meta_img["content"]
+                
+                # YouTubeのog:imageは低画質な場合があるため、サイズ指定があれば除去
+                # (例: =s640 を消すとフルサイズになることが多い)
+                high_res_url = re.sub(r'=s\d+.*', '', img_url)
+
+                # 3. 画面に表示
+                st.image(high_res_url, caption="抽出された画像", use_container_width=True)
+
+                # 4. ダウンロードボタン（バイナリで取得）
+                img_data = requests.get(high_res_url).content
+                st.download_button(
+                    label="高画質画像を保存",
+                    data=img_data,
+                    file_name="yt_post_image.jpg",
+                    mime="image/jpeg"
+                )
+            else:
+                st.error("画像が見つかりませんでした。URLが正しいか確認してください。")
         
-        # og:image (SNS共有用の画像URL) を探すのが一番手っ取り早い
-        img_url = soup.find("meta", property="og:image")["content"]
-        
-        if img_url:
-            st.image(img_url, caption="見つかった画像")
-            # ダウンロードボタン
-            st.download_button("画像を保存する", requests.get(img_url).content, "image.jpg")
-    except Exception as e:
-        st.error("うまく取得できなかったよ。URLが正しいか確認してね！")
+        except Exception as e:
+            st.error(f"エラーが発生しました: {e}")
+
+st.divider()
+st.caption("※YouTubeの仕様変更により動かなくなる場合があります。")
